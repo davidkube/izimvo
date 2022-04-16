@@ -1,27 +1,11 @@
-jQuery('table.paginated').each(function () {
-    var currentPage = 0;
-    var numPerPage = 5;
-    var jQuerytable = jQuery(this);
-    jQuerytable.bind('repaginate', function () {
-        jQuerytable.find('tbody tr').hide().slice(currentPage * numPerPage, (currentPage + 1) * numPerPage).show();
-    });
-    jQuerytable.trigger('repaginate');
-    var numRows = jQuerytable.find('tbody tr').length;
-    var numPages = Math.ceil(numRows / numPerPage);
-    var div = '<div id="pagers_'.concat(this.id, '" class="pager"></div>');
-    var jQuerypager = jQuery(div);
-    for (var page = 0; page < numPages; page++) {
-        jQuery('<span class="page-number" id="page_numbers_'.concat(this.id.replace("#", ""), page + 1, '"></span>')).text(page + 1).bind('click', {
-            newPage: page
-        }, function (event) {
-            currentPage = event.data['newPage'];
-            jQuerytable.trigger('repaginate');
-            jQuery(this).addClass('active').siblings().removeClass('active');
-        }).appendTo(jQuerypager).addClass('clickable');
-    }
-    jQuerypager.insertBefore(jQuerytable).find('span.page-number:first').addClass('active');
-});
-
+/**
+ * 
+ * refreshPages must take in a table and refresh the pagination
+ * so that it goes back to page 1 and 
+ * 
+ * @param {*} curID 
+ *  curId is the elemnt id of the table being refreshed
+ */
 
 function refreshPages(curID) {
     jQuery(":animated").promise().done(function () {
@@ -40,27 +24,72 @@ function refreshPages(curID) {
     });
 }
 
+/**
+ * 
+ * clearTemplate must refresh all of the pages so that the 
+ * unselected tables contain all of the questions and the
+ * selected tables contain nothing. This must redo the 
+ * pagination and the selection of all of the question rows
+ * it does not need to be animated
+ * 
+ * this should not be async
+ * 
+ */
 function clearTemplate() {
+    var tablePartners = {
+        'table_General_non': 'table_General_inc',
+        'table_General_inc': 'table_General_non',
+        'table_Course_non': 'table_Course_inc',
+        'table_Course_inc': 'table_Course_non',
+        'table_Lecturer_non': 'table_Lecturer_inc',
+        'table_Lecturer_inc': 'table_Lecturer_non'
+    };
     var arr = ['table_General_inc', 'table_Course_inc', 'table_Lecturer_inc'];
     arr.forEach(function (curID) {
-        jQuery('#'.concat(curID)).find('tbody').find('tr').find('input').trigger('click');
+        var table = '#'.concat(tablePartners[curID]);
+        jQuery('#'.concat(curID))
+            .find('tbody')
+            .find('tr')
+            .hide()
+            .forEach(
+                function (row){
+                    jQuery(table).append(row);
+                    repaginateTable(table);
+                    jQuery(row).show();
+                    repaginateTable('#'.concat(tableID));
+
+                    var qst = document.getElementById(getTFName(row.closest('table').attr('id')));
+                    var cont = row.closest('table').attr('id').replace('non', 'inc');
+                    var ids = jQuery('#'.concat(cont)).find('tbody').find('tr').map(function (_, x) {
+                        var str = String(x.id);
+                        var spl = str.split('_');
+                        return spl[spl.length - 1];
+                    }).get();
+                    qst.value = customSerialize(ids);
+                    return "";
+                }
+            );
     });
-    jQuery(":animated").promise().done(
-        function () {
-            console.log("Done clearing questions");
-        }
-    );
     arr.forEach(function (curID) {
         refreshPages(curID);
     });
-    jQuery(":animated").promise().done(
-        function () {
-            console.log("Done refreshing tables");
-        }
-    );
 }
 
-
+/**
+ * 
+ * clear the template
+ * arr: non-selected questions which after clearing will 
+ *      contain all the questions for the section
+ * mapped: given a non-selected table name give the corresponding
+ *         field for the questions to be populated in
+ * forEach: table get the associated field with questions.
+ *          use this to take the question from the parameter.
+ *          then for each question, select them.
+ *          when done, refresh the tables
+ * 
+ * @param {*} templateQuestions 
+ *          
+ */
 function addTemplate(templateQuestions) {
     clearTemplate();
     jQuery(":animated").promise().done(function () {
@@ -76,76 +105,109 @@ function addTemplate(templateQuestions) {
             if (Array.isArray(quests) && quests.length > 1) {
                 quests.forEach(function (question) {
                     jQuery(":animated").promise().done(function () {
-                        jQuery('#qst-select-rdbt-'.concat(question)).trigger('click');
-                        refreshPages(tableID);
+                        jQuery('#qst-select-rdbt-'.concat(question))
+                            .trigger('click');
+                        jQuery(":animated").promise().then(function (result) {
+                            refreshPages(tableID);
+                        });
+
                     });
                 });
             } else if (quests != '') {
-                jQuery('#qst-select-rdbt-'.concat(quests)).trigger('click');
-                refreshPages(tableID);
+                jQuery(":animated").promise().done(function () {
+                    jQuery('#qst-select-rdbt-'.concat(quests)).trigger('click');
+                    jQuery(":animated").promise().then(function (result) {
+                        refreshPages(tableID);
+                    });
+                });
             }
         });
     });
 }
 
-jQuery('#field_srv-gen').change(function (event) {
-    event.preventDefault();
-    jQuery('#field_srv-gen').prop('disabled', true);
-    var isChecked = jQuery('#'.concat(this.id)).is(':checked');
-    if (!isChecked) {
-        clearTemplate()
-    }
-    jQuery('#field_srv-gen').prop('disabled', false);
+/**
+ * paginated each table with class paginated
+ */
+jQuery('table.paginated')
+    .each(paginate);
 
-});
+/**
+ * #field_srv-gen refers to the question 'Would you like to
+ * generate the survey from a template?'. If it changes to 
+ * not selected, the templates must be cleared.
+ */
+jQuery('#field_srv-gen')
+    .change(function (event) {
+        event.preventDefault();
+        jQuery('#field_srv-gen').prop('disabled', true);
+        var isChecked = jQuery('#'.concat(this.id)).is(':checked');
+        if (!isChecked) {
+            clearTemplate()
+        }
+        jQuery('#field_srv-gen').prop('disabled', false);
 
-jQuery('#field_srv-template').change(function (event) {
-    event.preventDefault();
-    jQuery('#field_srv-template').prop('disabled', true);
-    if (jQuery('#'.concat(this.id)).val() != '') {
-        jQuery.ajax({
-            url: ajaxurl,
-            type: 'POST',
-            data: {
-                action: 'get_questions',
-                survey_name: jQuery('#'.concat(this.id)).val()
-            },
-            success: function (response) {
-                if (response != '') {
-                    addTemplate(JSON.parse(response));
-                } else {
-                    console.log(jQuery('#'.concat(this.id)).val());
-                }
-            },
-            error: function (data) {},
-            async: false
-        });
-    } else {
-        clearTemplate();
-    }
-    jQuery('#field_srv-template').prop('disabled', false);
-});
+    });
 
+/**
+ * #field_srv-template refers to the dropdown box allowing you
+ * to select a template to generate questions from.
+ * Start by making an Ajax call to get the questions from the
+ * selected survey. Then format these responses into the format
+ * for the addTemplate function.
+ */
+jQuery('#field_srv-template')
+    .change(function (event) {
+
+        event.preventDefault();
+
+        jQuery('#field_srv-template').prop('disabled', true);
+
+        if (jQuery('#'.concat(this.id)).val() != '') {
+            jQuery.ajax({
+                url: ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'get_questions',
+                    survey_name: jQuery('#'.concat(this.id)).val()
+                },
+                success: function (response) {
+                    if (response != '') {
+                        addTemplate(JSON.parse(response));
+                    } else {
+                        console.log(jQuery('#'.concat(this.id)).val());
+                    }
+                },
+                error: function (data) {},
+                async: false
+            });
+        } else {
+            clearTemplate();
+        }
+
+        jQuery('#field_srv-template').prop('disabled', false);
+    });
+
+/**
+ * Whenever any checkbox is changed do this.
+ * 
+ * If it is selecting courses during a survey, then make
+ * an ajax call to get the question for that course. 
+ * Append the response
+ * 
+ * If it is selecting a question:
+ * tablePartners: matches selection tables. Non-selected ones
+ *                have to match to the selected ones
+ * Change row class to selected/non-selected
+ * Fade out selected row
+ * Repaginate tables
+ * Fade in selected row
+ * Repaginate tables
+ * Updated field containing selected questions
+ * 
+ */
 jQuery('input[type="checkbox"]').change(function (event) {
 
     event.preventDefault();
-
-    var getUrlParameter = function getUrlParameter(sParam) {
-        var sPageURL = window.location.search.substring(1),
-            sURLVariables = sPageURL.split('&'),
-            sParameterName,
-            i;
-
-        for (i = 0; i < sURLVariables.length; i++) {
-            sParameterName = sURLVariables[i].split('=');
-
-            if (sParameterName[0] === sParam) {
-                return sParameterName[1] === undefined ? true : decodeURIComponent(sParameterName[1]);
-            }
-        }
-        return false;
-    };
-
     let surv = getUrlParameter('srv');
     var hasa = '#'
     var thisID = event.target.id;
@@ -185,13 +247,7 @@ jQuery('input[type="checkbox"]').change(function (event) {
         }
     } else if (jQuery(thisID).hasClass('qstSelector')) {
         console.log(thisID.concat(' is ', document.getElementById(jQuery(this).closest('tr').attr('id')).classList.contains('selected') ? 'selected.' : 'not selected.'));
-        var row = document.getElementById(jQuery(this).closest('tr').attr('id'));
-        if (row.classList.contains('selected')) {
-            row.classList.remove('selected');
-        } else {
-            row.classList.add('selected');
-        }
-
+        
         var tablePartners = {
             'table_General_non': 'table_General_inc',
             'table_General_inc': 'table_General_non',
@@ -201,34 +257,14 @@ jQuery('input[type="checkbox"]').change(function (event) {
             'table_Lecturer_inc': 'table_Lecturer_non'
         };
 
-        function repag(tableElem) {
-            var currentPage = 0;
-            var numPerPage = 5;
-            var jQuerytable = jQuery(tableElem);
-            jQuerytable.bind('repaginate', function () {
-                jQuerytable.find('tbody tr').hide().slice(currentPage * numPerPage, (currentPage + 1) * numPerPage).show();
-            });
-            jQuerytable.trigger('repaginate');
-            var numRows = jQuerytable.find('tbody tr').length;
-            var numPages = Math.ceil(numRows / numPerPage);
-            jQuery('#'.concat('pagers_', tableElem.replace("#", ""))).remove();
-            var div = '<div id="pagers_'.concat(tableElem.replace("#", ""), '" class="pager"></div>');
-            var jQuerypager = jQuery(div);
-            for (var page = 0; page < numPages; page++) {
-                jQuery('<span class="page-number" id="page_numbers_'.concat(tableElem.replace("#", ""), page + 1, '"></span>')).text(page + 1).bind('click', {
-                    newPage: page
-                }, function (event) {
-                    currentPage = event.data['newPage'];
-                    jQuerytable.trigger('repaginate');
-                    jQuery(this).addClass('active').siblings().removeClass('active');
-                }).appendTo(jQuerypager).addClass('clickable');
-            }
-            var currentPageID = '#page_numbers_'.concat(tableElem.replace("#", ""), currentPage + 1);
-            jQuerypager.insertBefore(jQuerytable).find(currentPageID).siblings().removeClass('active');
-            return jQuery(currentPageID).addClass('active');
-
-
+        var row = document.getElementById(jQuery(this).closest('tr').attr('id'));
+        
+        if (row.classList.contains('selected')) {
+            row.classList.remove('selected');
+        } else {
+            row.classList.add('selected');
         }
+
         row = jQuery(this).closest('tr').attr('id');
         var tableID = jQuery(this).closest('table').attr('id');
 
@@ -237,13 +273,13 @@ jQuery('input[type="checkbox"]').change(function (event) {
                 return jQuery('#'.concat(tablePartners[tableID])).append(jQuery('#'.concat(row)));
             })
             .then(function (result) {
-                return repag('#'.concat(tablePartners[tableID]));
+                return repaginateTable('#'.concat(tablePartners[tableID]));
             })
             .then(function (result) {
-                return jQuery('#'.concat(row)).fadeIn(350);
+                return jQuery('#'.concat(row)).fadeIn(100);
             })
             .then(function (result) {
-                return repag('#'.concat(tableID));
+                return repaginateTable('#'.concat(tableID));
             })
             .then(function (result) {
                 var qst = document.getElementById(getTFName(jQuery(thisID).closest('table').attr('id')));
